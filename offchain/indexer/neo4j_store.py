@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 from neo4j import GraphDatabase, Driver
+from neo4j.exceptions import ServiceUnavailable
 
 from offchain.common.models import Transaction
 
@@ -47,6 +48,9 @@ def from_env() -> Optional[Neo4jStore]:
     database = os.getenv("NEO4J_DATABASE")
     if not uri or not user or not password:
         return None
-    store = Neo4jStore(uri=uri, user=user, password=password, database=database)
-    store.ensure_constraints()
-    return store
+    try:
+        store = Neo4jStore(uri=uri, user=user, password=password, database=database)
+        store.ensure_constraints()
+        return store
+    except ServiceUnavailable:
+        return None

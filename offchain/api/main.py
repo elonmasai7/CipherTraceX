@@ -401,16 +401,26 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             await ws.close()
             return
 
-        graph_raw = _fetch_graph(address, depth)
-        risk_raw = _score_from_graph(address, graph_raw)
-        await ws.send_json({"graph": graph_raw, "risk": risk_raw})
+        try:
+            graph_raw = _fetch_graph(address, depth)
+            risk_raw = _score_from_graph(address, graph_raw)
+            await ws.send_json({"graph": graph_raw, "risk": risk_raw})
+        except HTTPException as exc:
+            await ws.send_json({"error": exc.detail})
+            await ws.close()
+            return
 
         if mode == "poll":
             while True:
                 await asyncio.sleep(interval)
-                graph_raw = _fetch_graph(address, depth)
-                risk_raw = _score_from_graph(address, graph_raw)
-                await ws.send_json({"graph": graph_raw, "risk": risk_raw})
+                try:
+                    graph_raw = _fetch_graph(address, depth)
+                    risk_raw = _score_from_graph(address, graph_raw)
+                    await ws.send_json({"graph": graph_raw, "risk": risk_raw})
+                except HTTPException as exc:
+                    await ws.send_json({"error": exc.detail})
+                    await ws.close()
+                    return
         else:
             await ws_manager.register(ws, address, depth)
             while True:
