@@ -79,6 +79,7 @@ Auth is controlled by `API_AUTH_MODE`:
 
 Replay protection:
 - `X-Nonce` must be unique within `API_NONCE_TTL_SECONDS` (default 300s).
+- For multi-instance deployments, set `API_REDIS_URL` (e.g., `redis://localhost:6379/0`) to store nonces in Redis.
 
 HMAC details:
 - `X-Timestamp`: unix seconds

@@ -12,6 +12,12 @@ services:
     volumes:
       - neo4j_data:/data
 
+  redis:
+    image: redis:7.2
+    container_name: fraud-redis
+    ports:
+      - "6379:6379"
+
   neo4j-seed:
     image: neo4j:5.22
     container_name: neo4j-seed
@@ -43,9 +49,11 @@ services:
       - API_JWT_SECRET=dev-jwt-secret
       - API_JWT_AUDIENCE=fraud-api
       - API_JWT_ISSUER=fraud-system
+      - API_REDIS_URL=redis://redis:6379/0
     depends_on:
       - neo4j
       - neo4j-seed
+      - redis
 
   indexer:
     build: .

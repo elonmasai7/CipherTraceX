@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import time
+import logging
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -21,6 +22,11 @@ from offchain.api.risk_engine import score_address
 from offchain.api.neo4j_graph import fetch_subgraph
 from offchain.indexer.neo4j_store import from_env
 
+try:
+    import redis
+except ImportError:  # pragma: no cover - optional dependency
+    redis = None
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 TX_FILE = DATA_DIR / "sample_txs.json"
@@ -28,6 +34,7 @@ GRAPH_FILE = DATA_DIR / "graph.json"
 
 app = FastAPI(title="Fraud Tracing API", version="0.1.0")
 app.mount("/ui", StaticFiles(directory=BASE_DIR / "web", html=True), name="ui")
+logger = logging.getLogger("fraud_api")
 
 
 class CaseRequest(BaseModel):
@@ -91,7 +98,62 @@ JWT_AUDIENCE = os.getenv("API_JWT_AUDIENCE")
 JWT_ISSUER = os.getenv("API_JWT_ISSUER")
 
 NONCE_TTL_SECONDS = int(os.getenv("API_NONCE_TTL_SECONDS", "300"))
-_nonces: Dict[str, float] = {}
+REDIS_URL = os.getenv("API_REDIS_URL")
+
+
+class NonceStore:
+    def check_and_store(self, nonce: str, now: float) -> bool:
+        raise NotImplementedError
+
+
+class MemoryNonceStore(NonceStore):
+    def __init__(self, ttl_seconds: int) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._nonces: Dict[str, float] = {}
+
+    def _prune(self, now: float) -> None:
+        expired = [nonce for nonce, ts in self._nonces.items() if now - ts > self._ttl_seconds]
+        for nonce in expired:
+            self._nonces.pop(nonce, None)
+
+    def check_and_store(self, nonce: str, now: float) -> bool:
+        self._prune(now)
+        if nonce in self._nonces:
+            return False
+        self._nonces[nonce] = now
+        return True
+
+
+class RedisNonceStore(NonceStore):
+    def __init__(self, client: "redis.Redis", ttl_seconds: int) -> None:
+        self._client = client
+        self._ttl_seconds = ttl_seconds
+
+    def check_and_store(self, nonce: str, now: float) -> bool:
+        result = self._client.set(
+            name=f"nonce:{nonce}",
+            value=str(int(now)),
+            nx=True,
+            ex=self._ttl_seconds,
+        )
+        return bool(result)
+
+
+def _build_nonce_store() -> NonceStore:
+    if REDIS_URL:
+        if redis is None:
+            logger.warning("API_REDIS_URL set but redis client is not installed; falling back to memory store.")
+        else:
+            try:
+                client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+                client.ping()
+                return RedisNonceStore(client, NONCE_TTL_SECONDS)
+            except Exception:
+                logger.warning("Failed to connect to Redis at API_REDIS_URL; falling back to memory store.")
+    return MemoryNonceStore(NONCE_TTL_SECONDS)
+
+
+_nonce_store = _build_nonce_store()
 
 
 class WsManager:
@@ -165,11 +227,6 @@ def _score_from_graph(address: str, graph_raw: Dict[str, Any]) -> Dict[str, Any]
 def _canonical_json(payload: Any) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
-def _prune_nonces(now: float) -> None:
-    expired = [nonce for nonce, ts in _nonces.items() if now - ts > NONCE_TTL_SECONDS]
-    for nonce in expired:
-        _nonces.pop(nonce, None)
-
 
 def _require_nonce(headers: Dict[str, str]) -> None:
     if AUTH_MODE == "none":
@@ -178,10 +235,8 @@ def _require_nonce(headers: Dict[str, str]) -> None:
     if not nonce:
         raise HTTPException(status_code=401, detail="Missing nonce header")
     now = time.time()
-    _prune_nonces(now)
-    if nonce in _nonces:
+    if not _nonce_store.check_and_store(nonce, now):
         raise HTTPException(status_code=401, detail="Nonce replayed")
-    _nonces[nonce] = now
 
 
 def _require_hmac(payload: Any, headers: Dict[str, str]) -> None:

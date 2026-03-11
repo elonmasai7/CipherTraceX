@@ -1,0 +1,86 @@
+{
+  "nodes": [
+    {
+      "id": "0x111"
+    },
+    {
+      "id": "0x222"
+    },
+    {
+      "id": "0x333"
+    },
+    {
+      "id": "0x444"
+    },
+    {
+      "id": "0x555"
+    },
+    {
+      "id": "0x999"
+    },
+    {
+      "id": "0x777"
+    },
+    {
+      "id": "0x888"
+    }
+  ],
+  "edges": [
+    {
+      "source": "0x111",
+      "target": "0x222",
+      "tx_hash": "0xaaa",
+      "amount": 5.2,
+      "timestamp": "2026-03-09T10:01:00+00:00"
+    },
+    {
+      "source": "0x222",
+      "target": "0x333",
+      "tx_hash": "0xaab",
+      "amount": 5.1,
+      "timestamp": "2026-03-09T10:02:10+00:00"
+    },
+    {
+      "source": "0x222",
+      "target": "0x999",
+      "tx_hash": "0xab0",
+      "amount": 2.0,
+      "timestamp": "2026-03-09T12:03:00+00:00"
+    },
+    {
+      "source": "0x333",
+      "target": "0x444",
+      "tx_hash": "0xaac",
+      "amount": 5.0,
+      "timestamp": "2026-03-09T10:02:55+00:00"
+    },
+    {
+      "source": "0x444",
+      "target": "0x555",
+      "tx_hash": "0xaad",
+      "amount": 4.9,
+      "timestamp": "2026-03-09T10:03:40+00:00"
+    },
+    {
+      "source": "0x999",
+      "target": "0x777",
+      "tx_hash": "0xaae",
+      "amount": 100.0,
+      "timestamp": "2026-03-09T12:00:00+00:00"
+    },
+    {
+      "source": "0x777",
+      "target": "0x888",
+      "tx_hash": "0xaaf",
+      "amount": 99.5,
+      "timestamp": "2026-03-09T12:00:30+00:00"
+    },
+    {
+      "source": "0x888",
+      "target": "0x222",
+      "tx_hash": "0xab1",
+      "amount": 98.0,
+      "timestamp": "2026-03-09T12:05:00+00:00"
+    }
+  ]
+}
