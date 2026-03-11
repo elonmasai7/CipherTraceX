@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fraud Trace Live Graph</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --accent: #38bdf8;
+        --risk: #f97316;
+        --low: #22c55e;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top left, #1e293b, #0b1120 55%);
+        color: var(--text);
+      }
+      header {
+        padding: 24px 32px 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      h1 { margin: 0; font-size: 22px; letter-spacing: 0.4px; }
+      .container {
+        padding: 16px 32px 40px;
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 24px;
+      }
+      .panel {
+        background: rgba(17, 24, 39, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+      }
+      label { display: block; margin-bottom: 6px; color: var(--muted); }
+      input, button {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: #0b1220;
+        color: var(--text);
+      }
+      button {
+        margin-top: 10px;
+        background: var(--accent);
+        color: #082f49;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #graph {
+        height: 70vh;
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: 14px;
+        position: relative;
+        overflow: hidden;
+      }
+      .risk {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      .risk strong { color: var(--accent); }
+      .legend {
+        display: flex;
+        gap: 12px;
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .legend span { display: inline-flex; gap: 6px; align-items: center; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+      .dot.low { background: var(--low); }
+      .dot.med { background: var(--risk); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fraud Trace Live Graph</h1>
+      <div>API: <span id="apiStatus">checking</span></div>
+    </header>
+    <div class="container">
+      <div class="panel">
+        <label for="address">Wallet / Address</label>
+        <input id="address" placeholder="0x222" />
+        <label for="depth" style="margin-top:12px;">Depth</label>
+        <input id="depth" type="number" min="1" max="4" value="2" />
+        <button id="load">Load Graph</button>
+        <div class="risk" id="riskBox">
+          <div><strong>Risk Score:</strong> <span id="riskScore">-</span></div>
+          <div><strong>Flags:</strong> <span id="riskFlags">-</span></div>
+          <div><strong>Reasons:</strong> <span id="riskReasons">-</span></div>
+        </div>
+        <div class="legend">
+          <span><i class="dot low"></i> Low Risk</span>
+          <span><i class="dot med"></i> Medium/High Risk</span>
+        </div>
+      </div>
+      <div class="panel" id="graph"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.27.0/dist/cytoscape.min.js"></script>
+    <script>
+      const apiBase = "";
+      const graphEl = document.getElementById("graph");
+      const statusEl = document.getElementById("apiStatus");
+
+      async function checkHealth() {
+        try {
+          const res = await fetch(`${apiBase}/health`);
+          statusEl.textContent = res.ok ? "online" : "error";
+        } catch {
+          statusEl.textContent = "offline";
+        }
+      }
+
+      let ws = null;
+      let cy = null;
+
+      function updateRisk(risk) {
+        document.getElementById("riskScore").textContent = risk.score.toFixed(2);
+        document.getElementById("riskFlags").textContent = risk.flags.join(", ") || "-";
+        document.getElementById("riskReasons").textContent = risk.reasons.join(" | ") || "-";
+      }
+
+      function renderGraph(data) {
+        const elements = [];
+        data.nodes.forEach(node => {
+          elements.push({ data: { id: node.id, label: node.id }});
+        });
+        data.edges.forEach(edge => {
+          elements.push({
+            data: {
+              id: edge.tx_hash || `${edge.source}-${edge.target}-${Math.random()}`,
+              source: edge.source,
+              target: edge.target,
+              label: edge.amount
+            }
+          });
+        });
+
+        if (cy) {
+          cy.json({ elements });
+          cy.layout({ name: "cose", animate: true }).run();
+          return;
+        }
+
+        cy = cytoscape({
+          container: graphEl,
+          elements,
+          style: [
+            { selector: 'node', style: { 'background-color': '#22c55e', 'label': 'data(label)', 'color': '#e2e8f0', 'font-size': '10px' } },
+            { selector: 'edge', style: { 'line-color': '#38bdf8', 'target-arrow-color': '#38bdf8', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'font-size': '8px', 'color': '#e2e8f0' } }
+          ],
+          layout: { name: 'cose', animate: true }
+        });
+      }
+
+      function wsUrl() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        return `${proto}://${location.host}/ws`;
+      }
+
+      function startWs(address, depth) {
+        if (ws) ws.close();
+        ws = new WebSocket(wsUrl());
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ address, depth, mode: "push", interval: 3 }));
+        };
+        ws.onmessage = (event) => {
+          const payload = JSON.parse(event.data);
+          if (payload.error) {
+            console.warn(payload.error);
+            return;
+          }
+          if (payload.graph) renderGraph(payload.graph);
+          if (payload.risk) updateRisk(payload.risk);
+        };
+      }
+
+      async function loadGraph() {
+        const address = document.getElementById("address").value.trim();
+        const depth = document.getElementById("depth").value;
+        if (!address) return;
+        startWs(address, depth);
+      }
+
+      document.getElementById("load").addEventListener("click", loadGraph);
+      checkHealth();
+    </script>
+  </body>
+</html>

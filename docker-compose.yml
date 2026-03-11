@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  neo4j:
+    image: neo4j:5.22
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/changeme
+    volumes:
+      - neo4j_data:/data
+
+  neo4j-seed:
+    image: neo4j:5.22
+    container_name: neo4j-seed
+    depends_on:
+      - neo4j
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=changeme
+      - SEED_FILE=/seed/seed.cypher
+    volumes:
+      - ./scripts/seed_neo4j.sh:/seed/seed_neo4j.sh:ro
+      - ./neo4j/seed.cypher:/seed/seed.cypher:ro
+    entrypoint: ["/bin/bash", "/seed/seed_neo4j.sh"]
+    restart: "no"
+
+  api:
+    build: .
+    container_name: fraud-api
+    ports:
+      - "8000:8000"
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=changeme
+      - API_AUTH_MODE=hmac
+      - API_HMAC_SECRET=dev-secret
+      - API_NONCE_TTL_SECONDS=300
+      - API_JWT_SECRET=dev-jwt-secret
+      - API_JWT_AUDIENCE=fraud-api
+      - API_JWT_ISSUER=fraud-system
+    depends_on:
+      - neo4j
+      - neo4j-seed
+
+  indexer:
+    build: .
+    container_name: eth-indexer
+    command: ["python", "-m", "offchain.indexer.eth_indexer", "--start-block", "0", "--poll-interval", "3"]
+    environment:
+      - ETH_RPC_URL=http://host.docker.internal:8545
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=changeme
+      - API_URL=http://api:8000
+      - API_HMAC_SECRET=dev-secret
+      - API_JWT_SECRET=dev-jwt-secret
+      - API_JWT_AUDIENCE=fraud-api
+      - API_JWT_ISSUER=fraud-system
+      - API_HMAC_SECRET=dev-secret
+    depends_on:
+      - neo4j
+
+volumes:
+  neo4j_data:

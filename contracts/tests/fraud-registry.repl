@@ -1,0 +1,19 @@
+(load "contracts/fraud-registry.pact")
+
+(env-data
+  { "admin-keyset": { "keys": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], "pred": "keys-all" } })
+
+(env-keys ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"])
+
+(fraud-registry.create-case "case-1" "reporter-hash" "meta-hash")
+(expect "case id" "case-1" (at "case-id" (fraud-registry.get-case "case-1")))
+(expect "reporter hash" "reporter-hash" (at "reporter-hash" (fraud-registry.get-case "case-1")))
+(expect "metadata hash" "meta-hash" (at "metadata-hash" (fraud-registry.get-case "case-1")))
+
+(fraud-registry.add-report "report-1" "case-1" "0xabc" "ethereum" "report-hash" "encrypted")
+(expect "report id" "report-1" (at "report-id" (fraud-registry.get-report "report-1")))
+(expect "report wallet" "0xabc" (at "wallet" (fraud-registry.get-report "report-1")))
+
+(fraud-registry.attest-wallet "0xabc" 0.75 ["rapid-hops" "fan-out"] ["case-1"])
+(expect "attest wallet" "0xabc" (at "wallet" (fraud-registry.get-attestation "0xabc")))
+(expect "attest risk" 0.75 (at "risk-score" (fraud-registry.get-attestation "0xabc")))
